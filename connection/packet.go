@@ -8,6 +8,11 @@ import (
 
 const (
 	PacketDelimiter = '!'
+	CON             = iota
+	ACK
+	DATA
+	PING
+	CLOSE
 )
 
 type Packet struct {
