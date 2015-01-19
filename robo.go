@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"flag"
 	"github.com/andrewchambers/robo/connection"
@@ -18,7 +19,6 @@ func server() {
 }
 
 func client() int {
-	/*
 		conn, err := net.Dial("tcp", "127.0.0.1:22")
 		if err != nil {
 			panic(err)
@@ -66,7 +66,6 @@ func client() int {
 			return exiterr.Waitmsg.ExitStatus()
 		}
 		return 0
-	*/
 }
 
 func main() {
@@ -83,4 +82,10 @@ func main() {
 	} else {
 		os.Exit(client())
 	}
+}
+
+*/
+
+func main() {
+
 }

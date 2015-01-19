@@ -10,7 +10,7 @@ func TestPacket(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		// Create a random packet.
 		p1 := Packet{}
-		p1.Flags = byte(rand.Int())
+		p1.Flags = PacketFlags(rand.Int())
 		p1.Seq = byte(rand.Int())
 		rlen := uint(rand.Int()) % 50
 		p1.Data = make([]byte, rlen, rlen)

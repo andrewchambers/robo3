@@ -14,9 +14,8 @@ func TestProto(t *testing.T) {
 
 	a, b := io.Pipe()
 	c, d := io.Pipe()
-
 	server := func() {
-		l := NewLink(a, d)
+		l := NewLink(a, d, false)
 		conn, err := l.Accept()
 		if err != nil {
 			t.Fatal(err)
@@ -27,13 +26,13 @@ func TestProto(t *testing.T) {
 			t.Fatal(err)
 		}
 		if string(buff) != "hello there!" {
-			t.Fatalf("bad string recieved. %s", string(buff))
+			t.Fatalf("bad string recieved. <%s>\n", string(buff))
 		}
 		wg.Done()
 	}
 
 	client := func() {
-		l := NewLink(c, b)
+		l := NewLink(c, b, true)
 		conn, err := l.Connect()
 		if err != nil {
 			t.Fatal(err)

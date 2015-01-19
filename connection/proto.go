@@ -2,6 +2,7 @@ package connection
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	//"net"
 	"sync"
@@ -9,6 +10,8 @@ import (
 )
 
 type RoboLink struct {
+	debug bool
+
 	r         io.Reader
 	w         io.Writer
 	packetIn  chan Packet
@@ -42,8 +45,9 @@ type RoboCon struct {
 	closed chan struct{}
 }
 
-func NewLink(r io.Reader, w io.Writer) *RoboLink {
+func NewLink(r io.Reader, w io.Writer, debug bool) *RoboLink {
 	l := &RoboLink{
+		debug:     debug,
 		r:         r,
 		w:         w,
 		packetIn:  make(chan Packet, 32),
@@ -66,6 +70,9 @@ func readPackets(l *RoboLink) {
 		if err != nil {
 			continue
 		}
+		if l.debug {
+			fmt.Printf("got packet... %v\n", p)
+		}
 		l.packetIn <- p
 	}
 }
@@ -74,6 +81,9 @@ func writePackets(l *RoboLink) {
 	for {
 		select {
 		case p := <-l.packetOut:
+			if l.debug {
+				fmt.Printf("sending packet... %v\n", p)
+			}
 			s := Encode(p)
 			_, err := l.w.Write([]byte(s))
 			if err != nil {
@@ -86,17 +96,7 @@ func writePackets(l *RoboLink) {
 	}
 }
 
-func (l *RoboLink) Accept() (io.ReadWriter, error) {
-	for {
-		p := <-l.packetIn
-		if p.Flags == CON {
-			l.packetOut <- Packet{Flags: ACK}
-			p = <-l.packetIn
-			if p.Flags == ACK {
-				break
-			}
-		}
-	}
+func newConnection(l *RoboLink) *RoboCon {
 	con := &RoboCon{}
 	con.l = l
 	con.dataIn = make(chan []byte, 32)
@@ -107,11 +107,11 @@ func (l *RoboLink) Accept() (io.ReadWriter, error) {
 	go handleCon(con)
 	go handleTimeouts(con)
 	go sendPings(con)
-	return con, nil
+	return con
 }
 
 func sendPings(c *RoboCon) {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -181,8 +181,42 @@ func handleCon(c *RoboCon) {
 	}
 }
 
-func (c *RoboLink) Connect() (io.ReadWriter, error) {
-	return nil, nil
+func (l *RoboLink) Accept() (io.ReadWriter, error) {
+	for {
+		p := <-l.packetIn
+		if p.Flags == CON {
+			l.packetOut <- Packet{Flags: CONACK}
+			p = <-l.packetIn
+			if p.Flags == ACK {
+				break
+			}
+		}
+	}
+	con := newConnection(l)
+	return con, nil
+}
+
+func (l *RoboLink) Connect() (io.ReadWriter, error) {
+	connected := false
+	for i := 0; i < 5; i++ {
+		l.packetOut <- Packet{Flags: CON}
+		var ack Packet
+		select {
+		case ack = <-l.packetIn:
+		case <-time.After(1 * time.Second):
+			continue
+		}
+		if ack.Flags == CONACK {
+			l.packetOut <- Packet{Flags: ACK}
+			connected = true
+			break
+		}
+	}
+	if !connected {
+		return nil, fmt.Errorf("failed to establish connection.")
+	}
+	ret := newConnection(l)
+	return ret, nil
 }
 
 func (c *RoboCon) Read(p []byte) (int, error) {
@@ -203,13 +237,13 @@ func (c *RoboCon) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (c *RoboCon) Write(p []byte) (int, error) {
+func (c *RoboCon) Write(d []byte) (int, error) {
 	c.writemutex.Lock()
 	defer c.writemutex.Unlock()
 	sendseqnum := c.seqnum
 loop:
 	for {
-		c.l.packetOut <- Packet{Flags: DATA, Seq: sendseqnum}
+		c.l.packetOut <- Packet{Flags: DATA, Seq: sendseqnum, Data: d}
 		select {
 		case c.awaitingack <- sendseqnum:
 			waswantedseqnum := <-c.ackconfirm
@@ -222,5 +256,5 @@ loop:
 	}
 	// Move onto the next seqnum
 	c.seqnum ^= 1
-	return len(p), nil
+	return len(d), nil
 }
