@@ -1,91 +1,89 @@
 package main
 
-/*
 import (
 	"flag"
+	"fmt"
 	"github.com/andrewchambers/robo/connection"
-	//"golang.org/x/crypto/ssh"
 	"io"
 	"net"
-	"os"
 )
 
-//var lAddress = flag.String("p", "127.0.0.1:8080", "address (to be changed to serial port)")
+var port = flag.Int("p", 7080, "port to listen or connect to")
 var isServer = flag.Bool("server", false, "Run as robo server")
-var cmd = ""
 
-func server() {
+var a, c io.Reader
+var b, d io.Writer
 
+func client() {
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	if err != nil {
+		panic(err)
+	}
+	for {
+		tcpconn, err := l.Accept()
+		if err != nil {
+			panic(err)
+		}
+		link := connection.NewLink(a, d)
+		conn, err := link.Connect()
+		if err != nil {
+			panic(err)
+		}
+		done := make(chan struct{})
+		go func() {
+			io.Copy(tcpconn, conn)
+			done <- struct{}{}
+			tcpconn.Close()
+			conn.Close()
+		}()
+		go func() {
+			io.Copy(conn, tcpconn)
+			done <- struct{}{}
+			tcpconn.Close()
+			conn.Close()
+		}()
+		<-done
+		<-done
+		panic("CLIENT DONE!")
+	}
 }
 
-func client() int {
-		conn, err := net.Dial("tcp", "127.0.0.1:22")
+func server() {
+	link := connection.NewLink(c, b)
+	for {
+		conn, err := link.Accept()
 		if err != nil {
 			panic(err)
 		}
-		defer conn.Close()
-		config := &ssh.ClientConfig{
-			User: "andrew",
-			Auth: []ssh.AuthMethod{ssh.Password("1qa2ws3ed")},
-		}
-		sshConn, chans, reqs, err := ssh.NewClientConn(conn, "foobar", config)
+		tcpconn, err := net.Dial("tcp", "127.0.0.1:22")
 		if err != nil {
 			panic(err)
 		}
-		defer sshConn.Close()
-		client := ssh.NewClient(sshConn, chans, reqs)
-		defer client.Close()
-		session, err := client.NewSession()
-		if err != nil {
-			panic(err)
-		}
-		defer session.Close()
-		stderr, err := session.StderrPipe()
-		if err != nil {
-			panic(err)
-		}
-		go io.Copy(os.Stderr, stderr)
-		stdout, err := session.StdoutPipe()
-		if err != nil {
-			panic(err)
-		}
-		go io.Copy(os.Stdout, stdout)
-		stdin, err := session.StdinPipe()
-		if err != nil {
-			panic(err)
-		}
-		go io.Copy(stdin, os.Stdin)
-		err = session.Start(cmd)
-		if err != nil {
-			panic(err)
-		}
-		// XXX do we need to wait for the io.copy to finish?
-		err = session.Wait()
-		if err != nil {
-			exiterr := err.(*ssh.ExitError)
-			return exiterr.Waitmsg.ExitStatus()
-		}
-		return 0
+		done := make(chan struct{})
+		go func() {
+			io.Copy(tcpconn, conn)
+			done <- struct{}{}
+			tcpconn.Close()
+			conn.Close()
+		}()
+		go func() {
+			io.Copy(conn, tcpconn)
+			done <- struct{}{}
+			tcpconn.Close()
+			conn.Close()
+		}()
+		<-done
+		<-done
+		panic("SERVER DONE!")
+	}
 }
 
 func main() {
 	flag.Parse()
-	for _, arg := range flag.Args() {
-		cmd += arg + " "
-	}
-	if cmd == "" {
-		os.Exit(1)
-	}
 
-	if *isServer {
-		server()
-	} else {
-		os.Exit(client())
-	}
-}
+	a, b = io.Pipe()
+	c, d = io.Pipe()
 
-*/
-
-func main() {
-
+	go server()
+	client()
 }
