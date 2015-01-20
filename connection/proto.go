@@ -16,16 +16,15 @@ type RoboLink struct {
 	w         io.Writer
 	packetIn  chan Packet
 	packetOut chan Packet
-	
+
 	// Closed on shutdown, don't send anything to this.
 	closeOnce sync.Once
-	closed chan struct{}
-	
-	// RoboCon reads from this chan on creation, and 
+	closed    chan struct{}
+
+	// RoboCon reads from this chan on creation, and
 	// writes to it after it is cleaned up fully.
 	// This means only one connection is allowed at a time.
 	isfree chan struct{}
-	
 }
 
 type RoboCon struct {
@@ -48,10 +47,10 @@ type RoboCon struct {
 	keepalive   chan struct{}
 
 	writemutex sync.Mutex
-    
-    closeOnce sync.Once
-	closed chan struct{}
-	
+
+	closeOnce sync.Once
+	closed    chan struct{}
+
 	allexited sync.WaitGroup
 }
 
@@ -62,7 +61,7 @@ func NewLink(r io.Reader, w io.Writer) *RoboLink {
 		packetIn:  make(chan Packet, 32),
 		packetOut: make(chan Packet, 32),
 		closed:    make(chan struct{}),
-		isfree:     make(chan struct{}, 1),
+		isfree:    make(chan struct{}, 1),
 	}
 	l.isfree <- struct{}{}
 	go readPackets(l)
@@ -71,44 +70,43 @@ func NewLink(r io.Reader, w io.Writer) *RoboLink {
 }
 
 func (l *RoboLink) Close() {
-    doClose := func() {
-        close(l.closed)
-    }
-    l.closeOnce.Do(doClose)
+	doClose := func() {
+		close(l.closed)
+	}
+	l.closeOnce.Do(doClose)
 }
 
 func (c *RoboCon) Close() {
-    doClose := func() {
-        close(c.closed)
-    }
-    c.closeOnce.Do(doClose)
+	doClose := func() {
+		close(c.closed)
+	}
+	c.closeOnce.Do(doClose)
 }
 
 func (c *RoboCon) sendPacket(p Packet) error {
-    select {
-    case c.l.packetOut <- p:
-        return nil
-    case <- c.closed:
-        return fmt.Errorf("connection closed.")
-    case <- c.l.closed:
-        return fmt.Errorf("link closed.")
-    }
+	select {
+	case c.l.packetOut <- p:
+		return nil
+	case <-c.closed:
+		return fmt.Errorf("connection closed.")
+	case <-c.l.closed:
+		return fmt.Errorf("link closed.")
+	}
 }
 
 func (c *RoboCon) readPacket() (Packet, error) {
-    select {
-    case p := <- c.l.packetIn:
-        return p, nil
-    case <- c.closed:
-        return Packet{},fmt.Errorf("connection closed.")
-    case <- c.l.closed:
-        return Packet{},fmt.Errorf("link closed.")
-    }
+	select {
+	case p := <-c.l.packetIn:
+		return p, nil
+	case <-c.closed:
+		return Packet{}, fmt.Errorf("connection closed.")
+	case <-c.l.closed:
+		return Packet{}, fmt.Errorf("link closed.")
+	}
 }
 
-
 func readPackets(l *RoboLink) {
-    defer l.Close()
+	defer l.Close()
 	r := bufio.NewReader(l.r)
 	for {
 		s, err := r.ReadString('!')
@@ -122,10 +120,10 @@ func readPackets(l *RoboLink) {
 		if l.debug {
 			fmt.Printf("got packet... %v\n", p)
 		}
-	    select {
+		select {
 		case l.packetIn <- p:
-		case <- l.closed:
-		    return
+		case <-l.closed:
+			return
 		}
 	}
 }
@@ -163,10 +161,10 @@ func newConnection(l *RoboLink) *RoboCon {
 	go handleTimeouts(con)
 	go sendPings(con)
 	go func() {
-	    con.allexited.Wait()
-	    con.l.isfree <- struct{}{}
+		con.allexited.Wait()
+		con.l.isfree <- struct{}{}
 	}()
-	
+
 	return con
 }
 
@@ -176,14 +174,14 @@ func sendPings(c *RoboCon) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-	    select {
-	        case <- ticker.C:
-	        case <- c.closed:
-	            return
-	    }
+		select {
+		case <-ticker.C:
+		case <-c.closed:
+			return
+		}
 		err := c.sendPacket(Packet{Flags: PING})
 		if err != nil {
-		    return
+			return
 		}
 	}
 }
@@ -207,15 +205,15 @@ func handleTimeouts(c *RoboCon) {
 }
 
 func handleCon(c *RoboCon) {
-    defer c.allexited.Done()
-    defer c.Close()
+	defer c.allexited.Done()
+	defer c.Close()
 	var eseqnum byte
 	for {
-		p,err := c.readPacket()
+		p, err := c.readPacket()
 		if err != nil {
-		    return
+			return
 		}
-		
+
 		switch p.Flags {
 		case DATA:
 			if p.Seq == eseqnum {
@@ -223,19 +221,19 @@ func handleCon(c *RoboCon) {
 				case c.dataIn <- p.Data:
 					eseqnum ^= 1
 					c.keepalive <- struct{}{}
-			        err = c.sendPacket(Packet{Flags: ACK, Seq: p.Seq})
-			        if err != nil {
-			            return
-			        }
+					err = c.sendPacket(Packet{Flags: ACK, Seq: p.Seq})
+					if err != nil {
+						return
+					}
 				default:
 					// drop data packet.
 				}
 			}
 		case PING:
-		    select {
+			select {
 			case c.keepalive <- struct{}{}:
 			default:
-			    // Nothing...
+				// Nothing...
 			}
 		case ACK:
 			select {
@@ -255,34 +253,34 @@ func handleCon(c *RoboCon) {
 }
 
 func (l *RoboLink) Accept() (*RoboCon, error) {
-	
+
 	select {
-	case <- l.isfree:
-	case <- time.After(5 * time.Second):
-	    return nil, fmt.Errorf("link busy")
+	case <-l.isfree:
+	case <-time.After(5 * time.Second):
+		return nil, fmt.Errorf("link busy")
 	}
-	
+
 	for {
-	    var p Packet
-	    select {
+		var p Packet
+		select {
 		case p = <-l.packetIn:
-		case <- l.closed:
-		    l.isfree <- struct {}{}
-		    return nil, fmt.Errorf("link down.")
+		case <-l.closed:
+			l.isfree <- struct{}{}
+			return nil, fmt.Errorf("link down.")
 		}
 		if p.Flags == CON {
-	        select {
-		    case l.packetOut <- Packet{Flags: CONACK}:
-		    case <- l.closed:
-		        l.isfree <- struct {}{}
-		        return nil, fmt.Errorf("link down.")
-		    }
-	        select {
-		    case p = <-l.packetIn:
-		    case <- l.closed:
-		        l.isfree <- struct {}{}
-		        return nil, fmt.Errorf("link down.")
-		    }
+			select {
+			case l.packetOut <- Packet{Flags: CONACK}:
+			case <-l.closed:
+				l.isfree <- struct{}{}
+				return nil, fmt.Errorf("link down.")
+			}
+			select {
+			case p = <-l.packetIn:
+			case <-l.closed:
+				l.isfree <- struct{}{}
+				return nil, fmt.Errorf("link down.")
+			}
 			if p.Flags == ACK {
 				break
 			}
@@ -293,38 +291,38 @@ func (l *RoboLink) Accept() (*RoboCon, error) {
 }
 
 func (l *RoboLink) Connect() (*RoboCon, error) {
-	
+
 	select {
-	case <- l.isfree:
+	case <-l.isfree:
 	case <-time.After(5 * time.Second):
-	    return nil, fmt.Errorf("link busy")
+		return nil, fmt.Errorf("link busy")
 	}
-	
+
 	connected := false
 	for i := 0; i < 5; i++ {
 		l.packetOut <- Packet{Flags: CON}
 		var ack Packet
 		select {
 		case ack = <-l.packetIn:
-		case <- l.closed:
-		    l.isfree <- struct {}{}
-		    return nil, fmt.Errorf("link down.")
+		case <-l.closed:
+			l.isfree <- struct{}{}
+			return nil, fmt.Errorf("link down.")
 		case <-time.After(1 * time.Second):
 			continue
 		}
 		if ack.Flags == CONACK {
-	        select {
-		    case l.packetOut <- Packet{Flags: ACK}:
-		    case <- l.closed:
-		        l.isfree <- struct {}{}
-		        return nil, fmt.Errorf("link down.")
-		    }
+			select {
+			case l.packetOut <- Packet{Flags: ACK}:
+			case <-l.closed:
+				l.isfree <- struct{}{}
+				return nil, fmt.Errorf("link down.")
+			}
 			connected = true
 			break
 		}
 	}
 	if !connected {
-	    l.isfree <- struct {}{}
+		l.isfree <- struct{}{}
 		return nil, fmt.Errorf("failed to establish connection.")
 	}
 	ret := newConnection(l)
@@ -340,10 +338,10 @@ func (c *RoboCon) Read(p []byte) (int, error) {
 	if len(c.buffer) > 0 {
 		data = c.buffer
 	} else {
-	    select {
+		select {
 		case data = <-c.dataIn:
-		case <- c.closed:
-		    return 0, fmt.Errorf("connection closed.")
+		case <-c.closed:
+			return 0, fmt.Errorf("connection closed.")
 		}
 	}
 	n := copy(p, data)
@@ -359,10 +357,10 @@ func (c *RoboCon) Write(d []byte) (int, error) {
 	sendseqnum := c.seqnum
 loop:
 	for {
-	    err := c.sendPacket(Packet{Flags: DATA, Seq: sendseqnum, Data: d})
+		err := c.sendPacket(Packet{Flags: DATA, Seq: sendseqnum, Data: d})
 		if err != nil {
-		    return 0, err
-		} 
+			return 0, err
+		}
 		select {
 		case c.awaitingack <- sendseqnum:
 			waswantedseqnum := <-c.ackconfirm

@@ -1,23 +1,22 @@
 package connection
 
 import (
+	"bufio"
+	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 	"testing"
-	"fmt"
-	"bufio"
-	"math/rand"
 )
 
-
 type faultyReader struct {
-    rc io.Reader
+	rc io.Reader
 }
 
 func (fr *faultyReader) Read(b []byte) (int, error) {
 	n, err := fr.rc.Read(b)
 	for i := 0; i < n; i++ {
-		if rand.Uint32() % 100 == 0 {
+		if rand.Uint32()%100 == 0 {
 			b[i] = byte(rand.Int())
 		}
 	}
@@ -29,13 +28,13 @@ func TestProto1(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Add(2)
-    var a,c io.Reader
+	var a, c io.Reader
 	a, b := io.Pipe()
 	c, d := io.Pipe()
-	
+
 	a = &faultyReader{a}
 	c = &faultyReader{c}
-	
+
 	server := func() {
 		l := NewLink(a, d)
 		conn, err := l.Accept()
@@ -80,41 +79,41 @@ func TestProto2(t *testing.T) {
 
 	a, b := io.Pipe()
 	c, d := io.Pipe()
-	
+
 	doWrites := func(rw io.ReadWriter, pong bool) {
-	    var err error
-	    for i := 0 ; i < 100 ; i++ {
-	        if pong {
-	            _,err = rw.Write([]byte(fmt.Sprintf("pong%d\n", i)))
-	        } else {
-	            _,err = rw.Write([]byte(fmt.Sprintf("ping%d\n", i)))
-	        }
-	        if err != nil {
-	            break
-	        }
-	    }
+		var err error
+		for i := 0; i < 100; i++ {
+			if pong {
+				_, err = rw.Write([]byte(fmt.Sprintf("pong%d\n", i)))
+			} else {
+				_, err = rw.Write([]byte(fmt.Sprintf("ping%d\n", i)))
+			}
+			if err != nil {
+				break
+			}
+		}
 	}
-	
+
 	doReads := func(rw io.ReadWriter, pong bool) {
-	    var term string
-	    if pong {
-	        term = "pong99\n"
-	    } else {
-	        term = "ping99\n"
-	    }
-	    rdr := bufio.NewReader(rw)
-	    for {
-	        s, err := rdr.ReadString('\n')
-	        if err != nil {
-	            break
-	        }
-	        //fmt.Println(s)
-	        if s == term {
-	            break
-	        }
-	    }
+		var term string
+		if pong {
+			term = "pong99\n"
+		} else {
+			term = "ping99\n"
+		}
+		rdr := bufio.NewReader(rw)
+		for {
+			s, err := rdr.ReadString('\n')
+			if err != nil {
+				break
+			}
+			//fmt.Println(s)
+			if s == term {
+				break
+			}
+		}
 	}
-	
+
 	server := func() {
 		l := NewLink(a, d)
 		conn, err := l.Accept()
