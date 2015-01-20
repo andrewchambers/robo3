@@ -228,6 +228,11 @@ func handleCon(c *RoboCon) {
 				default:
 					// drop data packet.
 				}
+			} else {
+				err = c.sendPacket(Packet{Flags: ACK, Seq: p.Seq})
+				if err != nil {
+					return
+				}
 			}
 		case PING:
 			select {

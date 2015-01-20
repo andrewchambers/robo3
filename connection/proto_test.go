@@ -80,36 +80,31 @@ func TestProto2(t *testing.T) {
 	a, b := io.Pipe()
 	c, d := io.Pipe()
 
-	doWrites := func(rw io.ReadWriter, pong bool) {
+	doWrites := func(rw io.ReadWriter) {
 		var err error
-		for i := 0; i < 100; i++ {
-			if pong {
-				_, err = rw.Write([]byte(fmt.Sprintf("pong%d\n", i)))
-			} else {
-				_, err = rw.Write([]byte(fmt.Sprintf("ping%d\n", i)))
-			}
+		for i := 0; i < 10000; i++ {
+			_, err = rw.Write([]byte(fmt.Sprintf("ping%d\n", i)))
 			if err != nil {
 				break
 			}
 		}
+		rw.Write([]byte("end\n"))
 	}
 
-	doReads := func(rw io.ReadWriter, pong bool) {
-		var term string
-		if pong {
-			term = "pong99\n"
-		} else {
-			term = "ping99\n"
-		}
+	doReads := func(rw io.ReadWriter) {
+		i := 0
 		rdr := bufio.NewReader(rw)
 		for {
 			s, err := rdr.ReadString('\n')
 			if err != nil {
 				break
 			}
-			//fmt.Println(s)
-			if s == term {
+			if s == fmt.Sprintf("ping%d\n", i) {
+				i++
+			} else if s == "end\n" {
 				break
+			} else {
+				t.Fatalf("bad value %s", s)
 			}
 		}
 	}
@@ -120,8 +115,8 @@ func TestProto2(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		go doWrites(conn, true)
-		doReads(conn, false)
+		go doWrites(conn)
+		doReads(conn)
 		conn.Close()
 		conn.allexited.Wait()
 		wg.Done()
@@ -133,8 +128,8 @@ func TestProto2(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		go doWrites(conn, false)
-		doReads(conn, true)
+		go doWrites(conn)
+		doReads(conn)
 		conn.Close()
 		conn.allexited.Wait()
 		wg.Done()
