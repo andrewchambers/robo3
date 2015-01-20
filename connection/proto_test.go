@@ -82,7 +82,7 @@ func TestProto2(t *testing.T) {
 
 	doWrites := func(rw io.ReadWriter) {
 		var err error
-		for i := 0; i < 1000000; i++ {
+		for i := 0; i < 10000; i++ {
 			_, err = rw.Write([]byte(fmt.Sprintf("ping%d\n", i)))
 			if err != nil {
 				break
