@@ -286,7 +286,7 @@ func (l *RoboLink) Accept() (*RoboCon, error) {
 				l.isfree <- struct{}{}
 				return nil, fmt.Errorf("link down.")
 			}
-			if p.Flags == ACK {
+			if p.Flags == CONACK {
 				break
 			}
 		}
@@ -317,7 +317,7 @@ func (l *RoboLink) Connect() (*RoboCon, error) {
 		}
 		if ack.Flags == CONACK {
 			select {
-			case l.packetOut <- Packet{Flags: ACK}:
+			case l.packetOut <- Packet{Flags: CONACK}:
 			case <-l.closed:
 				l.isfree <- struct{}{}
 				return nil, fmt.Errorf("link down.")
@@ -372,7 +372,7 @@ loop:
 			if waswantedseqnum {
 				break loop
 			}
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(1000 * time.Millisecond):
 			// try and resend.
 		}
 	}

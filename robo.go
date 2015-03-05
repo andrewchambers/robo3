@@ -6,16 +6,18 @@ import (
 	"github.com/andrewchambers/robo/connection"
 	"io"
 	"net"
+	"os"
 )
 
-var port = flag.Int("p", 7080, "port to listen or connect to")
-var isServer = flag.Bool("server", false, "Run as robo server")
-
-var a, c io.Reader
-var b, d io.Writer
+var port = flag.Int("p", 7080, "Port to listen on or connect to.")
+var isServer = flag.Bool("server", false, "Run as robo server.")
 
 func client() {
 	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	if err != nil {
+		panic(err)
+	}
+	serport, err := os.OpenFile("/dev/ttyUSB0", os.O_RDWR, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -24,7 +26,8 @@ func client() {
 		if err != nil {
 			panic(err)
 		}
-		link := connection.NewLink(a, d)
+		defer serport.Close()
+		link := connection.NewLink(serport, serport)
 		conn, err := link.Connect()
 		if err != nil {
 			panic(err)
@@ -49,7 +52,11 @@ func client() {
 }
 
 func server() {
-	link := connection.NewLink(c, b)
+	serport, err := os.OpenFile("/dev/ttyUSB1", os.O_RDWR, 0)
+	if err != nil {
+		panic(err)
+	}
+	link := connection.NewLink(serport, serport)
 	for {
 		conn, err := link.Accept()
 		if err != nil {
@@ -61,13 +68,15 @@ func server() {
 		}
 		done := make(chan struct{})
 		go func() {
-			io.Copy(tcpconn, conn)
+			_, err := io.Copy(tcpconn, conn)
+			panic(err)
 			done <- struct{}{}
 			tcpconn.Close()
 			conn.Close()
 		}()
 		go func() {
-			io.Copy(conn, tcpconn)
+			_, err := io.Copy(conn, tcpconn)
+			panic(err)
 			done <- struct{}{}
 			tcpconn.Close()
 			conn.Close()
@@ -80,10 +89,9 @@ func server() {
 
 func main() {
 	flag.Parse()
-
-	a, b = io.Pipe()
-	c, d = io.Pipe()
-
-	go server()
-	client()
+	if *isServer {
+		server()
+	} else {
+		client()
+	}
 }
